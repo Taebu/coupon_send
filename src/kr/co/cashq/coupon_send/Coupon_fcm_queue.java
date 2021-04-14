@@ -952,13 +952,8 @@ public class Coupon_fcm_queue {
 				   /* 3. order_point.po_type=due_point가 Tradeid가 일치하는 경우가 있을 경우 */
 				   is_baropay_point = is_baropay_point && is_due_point(trade_id);
 				   
-				   /* 4. 현장 결제가 아닌 경우 */
-				   if(ordtake.get("pay_type").equals("FIELD_CASH")||ordtake.get("pay_type").equals("FIELD_CARD"))
-				   {
-					   is_baropay_point = false;
-				   }
 				   
-				   /* 위 4가지 조건을 만족했을 때 주문 예정 포인트(due_point)를 주문 포인트로 충전(charge) 생성한다.*/
+				   /* 위 3가지 조건을 만족했을 때 주문 예정 포인트(due_point)를 주문 포인트로 충전(charge) 생성한다.*/
 				   if(is_baropay_point)
 				   {
 					   
