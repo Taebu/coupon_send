@@ -79,7 +79,7 @@ public class DBConn {
 	 * @return
 	 */
 	private static String CON_STR() {
-		return "jdbc:mysql://" + CON_DOMAIN + ":" + CON_PORT + "/" + CON_DBNM;
+		return "jdbc:mysql://" + CON_DOMAIN + ":" + CON_PORT + "/" + CON_DBNM+"?zeroDateTimeBehavior=convertToNull";
 	}
 
 	/**

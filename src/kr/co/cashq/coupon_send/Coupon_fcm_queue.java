@@ -21,6 +21,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.regex.Pattern;
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 
 import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
@@ -73,6 +79,9 @@ public class Coupon_fcm_queue {
 		/* 주문 정보 */
 		Map<String, String> rc_log_info = new HashMap<String, String>();
 		
+		/* 고정쿠폰 정보 */
+		Map<String, String> absolute_info = new HashMap<String, String>();
+
 		/* 랜덤쿠폰 정보 */
 		Map<String, String> random_info = new HashMap<String, String>();
 
@@ -98,6 +107,8 @@ public class Coupon_fcm_queue {
 		String rc_log_name_Ym = "";
 		
 		String rc_log_name = "";
+		String rc_no ="";
+		String ac_no ="";
 		/* 포인트 갯수를 센다. */
 		int point_count= 0;
 		int ac_point = 0;
@@ -154,19 +165,26 @@ public class Coupon_fcm_queue {
 				
 				/* resultSet 을 Map<string,String>형태로 변환 한다. */
 				ac_log_info = getResultMapRows(dao.rs());
+
+				
+				/* ac_no로 random_coupon 정보를 불러온다. */
+				ac_no = ac_log_info.get("ac_no");
+
+				absolute_info=get_absolute_info(ac_no);
 				
 				/* 처리중(P01)로 변환 한다. */
 				set_absolute_log(ac_log_info,"P01");
 				
 				ac_point= Integer.parseInt(ac_log_info.get("ac_point"));
 				
-				mb_hp= ac_log_info.get("mb_hp");
+				mb_hp= phone_format(ac_log_info.get("mb_hp"));
 				
 				/* 핸드폰 번호로 고객 정보를 불러온다. */
 				member_info=get_user_info(mb_hp);
 			
 				/* 포인트를 충전한다. */
 				int po_mb_point = Integer.parseInt(member_info.get("order_point")) + ac_point;
+
 				String po_content = String.format("%s 쿠폰 충전 ac_no : %s",ac_log_info.get("ac_name"),ac_log_info.get("ac_no"));
 			   
 			   order_info.put("mb_id",member_info.get("userid"));
@@ -197,7 +215,54 @@ public class Coupon_fcm_queue {
 				
 				/* absolute_coupon.ac_person 을 1 증가 시킨다.*/
 				set_absolute_coupon(ac_log_info.get("ac_no"));
-				} /* while(dao.rs().next()) {...} */
+			
+
+				String ac_referee_yn = absolute_info.get("ac_referee_yn");
+				/* 
+				* 추천인이 있는 경우  
+				* 사용 하고 있는지 여부
+				* */
+				if(absolute_info.get("ac_referee").length()>8&&ac_referee_yn.equals("Y")) 
+				{
+					mb_hp = absolute_info.get("ac_referee");
+					member_info = get_user_info(mb_hp);
+					int ac_referee_point = 0;
+					double ac_referee_percent = 0.0;
+					String ac_type = "";
+					ac_type= absolute_info.get("ac_referee_type");
+					
+					if(ac_type.equals("percent"))
+					{
+						   ac_referee_point =  Integer.parseInt(absolute_info.get("ac_referee_point"));
+						   ac_referee_percent = ac_point * ac_referee_point * 0.01;
+						   ac_point = (int)ac_referee_percent;
+					}else{
+						   ac_point =  Integer.parseInt(absolute_info.get("ac_referee_point"));
+					}
+					   
+						/* 포인트를 충전한다. */
+						po_mb_point = Integer.parseInt(member_info.get("order_point")) + ac_point;
+						po_content = String.format("%s 추천인 충전 ac_no : %s",ac_log_info.get("ac_name")+" "+ac_type,ac_log_info.get("ac_no"));
+					   
+					   order_info.put("mb_id",member_info.get("userid"));
+					   order_info.put("mb_hp",mb_hp.replaceAll("\\-", "").replaceAll("\\+82", "0").trim());
+					   order_info.put("biz_code","a075");
+					   order_info.put("po_content",  po_content);
+					   order_info.put("po_point",Integer.toString(ac_point));
+					   order_info.put("po_mb_point",Integer.toString(po_mb_point));
+					   order_info.put("po_rel_table", "@rc_charge_"+rc_log_info.get("ac_no"));
+					   order_info.put("po_type","coupon_point_charge");
+					   order_info.put("po_rel_id","a075");
+					   order_info.put("Tradeid","");
+					   
+					   /* 주문 정보를 통해 order_point를 생성한다. */
+					   insert_orderpoint(order_info);
+
+						/* 멤버의 주문 포인트 정보를 갱신한다.*/
+						set_order_point(mb_hp,Integer.toString(po_mb_point));	   
+				   }
+			
+			} /* while(dao.rs().next()) {...} */
 			
 		   /* 고정형 쿠폰이 접수 된 것을 조회 한다. */
 			sb2.append("select * from random_coupon_log where rl_status='P00';");
@@ -222,14 +287,16 @@ public class Coupon_fcm_queue {
 				
 
 				/* rc_no로 random_coupon 정보를 불러온다. */
-				random_info=get_random_info(rc_log_info.get("rc_no"));
+				rc_no = rc_log_info.get("rc_no");
+
+				random_info=get_random_info(rc_no);
 				
 				/* 처리중(P01)로 변환 한다. */
 				set_random_log(rc_log_info,"P01");
 				
 				rc_point= Integer.parseInt(rc_log_info.get("rc_point"));
 				
-				mb_hp= rc_log_info.get("mb_hp");
+				mb_hp= phone_format(rc_log_info.get("mb_hp"));
 				
 				/* 핸드폰 번호로 고객 정보를 불러온다. */
 				member_info=get_user_info(mb_hp);
@@ -251,11 +318,15 @@ public class Coupon_fcm_queue {
 				
 				String rc_stamp_count = rc_log_info.get("rc_stamp_count");
 				
-			   if(rc_stamp_each.equals(rc_stamp_count))
+				int int_rc_stamp_each =  Integer.parseInt(rc_stamp_each);
+				int int_rc_stamp_count =  Integer.parseInt(rc_stamp_count);
+        
+
+			   if(rc_stamp_each.equals(rc_stamp_count)||int_rc_stamp_each % int_rc_stamp_count==0)
 			   {
 					/* 포인트를 충전한다. */
 					int po_mb_point = Integer.parseInt(member_info.get("order_point")) + rc_point;
-					String po_content = String.format("%s 쿠폰 충전 ac_no : %s",rc_log_info.get("rc_name"),rc_log_info.get("rc_no"));
+					String po_content = String.format("%s 쿠폰 충전 rc_no : %s",rc_log_info.get("rc_name"),rc_log_info.get("rc_no"));
 				   
 				   order_info.put("mb_id",member_info.get("userid"));
 				   order_info.put("mb_hp",mb_hp.replaceAll("\\-", "").replaceAll("\\+82", "0").trim());
@@ -263,7 +334,7 @@ public class Coupon_fcm_queue {
 				   order_info.put("po_content",  po_content);
 				   order_info.put("po_point",Integer.toString(rc_point));
 				   order_info.put("po_mb_point",Integer.toString(po_mb_point));
-				   order_info.put("po_rel_table", "@ac_charge_"+ac_log_info.get("rc_no"));
+				   order_info.put("po_rel_table", "@rc_charge_"+ac_log_info.get("rc_no"));
 				   order_info.put("po_type","coupon_point_charge");
 				   order_info.put("po_rel_id","a075");
 				   order_info.put("Tradeid","");
@@ -293,19 +364,21 @@ public class Coupon_fcm_queue {
 						   rc_referee_point =  Integer.parseInt(random_info.get("rc_referee_point"));
 						   rc_referee_percent = rc_point * rc_referee_point * 0.01;
 						   rc_point = (int)rc_referee_percent;
+					   }else{
+						   rc_point =  Integer.parseInt(random_info.get("rc_referee_point"));
 					   }
 					   
 						/* 포인트를 충전한다. */
 						po_mb_point = Integer.parseInt(member_info.get("order_point")) + rc_point;
-						po_content = String.format("%s 추천인 충전 ac_no : %s",rc_log_info.get("rc_name")+" "+rc_type,rc_log_info.get("rc_no"));
+						po_content = String.format("%s 추천인 충전 rc_no : %s",rc_log_info.get("rc_name")+" "+rc_type,rc_log_info.get("rc_no"));
 					   
 					   order_info.put("mb_id",member_info.get("userid"));
 					   order_info.put("mb_hp",mb_hp.replaceAll("\\-", "").replaceAll("\\+82", "0").trim());
 					   order_info.put("biz_code","a075");
 					   order_info.put("po_content",  po_content);
-					   order_info.put("po_point",rc_log_info.get("rc_point"));
+					   order_info.put("po_point",Integer.toString(rc_point));
 					   order_info.put("po_mb_point",Integer.toString(po_mb_point));
-					   order_info.put("po_rel_table", "@ac_charge_"+rc_log_info.get("rc_no"));
+					   order_info.put("po_rel_table", "@rc_charge_"+rc_log_info.get("rc_no"));
 					   order_info.put("po_type","coupon_point_charge");
 					   order_info.put("po_rel_id","a075");
 					   order_info.put("Tradeid","");
@@ -1345,7 +1418,7 @@ public class Coupon_fcm_queue {
      * @return Listt<map> 형태로 리턴
      * @throws Exception Collection
      */
-    private static Map<String, String> getResultMapRows(ResultSet rs) throws Exception
+    public static Map<String, String> getResultMapRows(ResultSet rs) throws Exception
     {
         // ResultSet 의 MetaData를 가져온다.
         ResultSet metaData = (ResultSet) rs;
@@ -2572,6 +2645,11 @@ public class Coupon_fcm_queue {
 		
 	}
 
+	public static String phone_format(String number) 
+	{ 
+		String regEx = "(\\d{3})(\\d{3,4})(\\d{4})";
+		return number.replaceAll(regEx, "$1-$2-$3");
+	}
 
 	/**
 	 * insert_orderpoint
@@ -2582,15 +2660,30 @@ public class Coupon_fcm_queue {
 		// TODO Auto-generated method stub
 		StringBuilder sb = new StringBuilder();
 		MyDataObject dao = new MyDataObject();
-		
+		String today = null;
+ 
+		Date date = new Date();
+		 
+		// 포맷변경 ( 년월일 시분초)
+		SimpleDateFormat sdformat = new SimpleDateFormat("yyyy-MM-dd"); 
+		 
+		// Java 시간 더하기
+		 
+		Calendar cal = Calendar.getInstance();
+		 
+		// 하루 전
+		cal.setTime(date);
+		cal.add(Calendar.DATE, +60);
+		today = sdformat.format(cal.getTime());  
+		Utils.getLogger().info(today);
 		sb.append("INSERT INTO cashq.order_point SET ");
 		sb.append("mb_id=?,");
 		sb.append("mb_hp=?,");
 		sb.append("biz_code=?,");
 		sb.append("po_content=?,");
 		sb.append("po_point=?,");
-		sb.append("po_expire_date='9999-12-31',");
 		sb.append("po_mb_point=?,");
+		sb.append("po_expire_date=?,");
 		sb.append("po_rel_table=?,");
 		sb.append("po_type=?,");
 		sb.append("po_rel_action=now(),");
@@ -2606,10 +2699,11 @@ public class Coupon_fcm_queue {
 			dao.pstmt().setString(4, order_point.get("po_content"));
 			dao.pstmt().setString(5, order_point.get("po_point"));
 			dao.pstmt().setString(6, order_point.get("po_mb_point"));
-			dao.pstmt().setString(7, order_point.get("po_rel_table"));
-			dao.pstmt().setString(8, order_point.get("po_type"));
-			dao.pstmt().setString(9, order_point.get("po_rel_id"));
-			dao.pstmt().setString(10, order_point.get("Tradeid"));
+			dao.pstmt().setString(7, today);
+			dao.pstmt().setString(8, order_point.get("po_rel_table"));
+			dao.pstmt().setString(9, order_point.get("po_type"));
+			dao.pstmt().setString(10, order_point.get("po_rel_id"));
+			dao.pstmt().setString(11, order_point.get("Tradeid"));
 			dao.pstmt().executeUpdate();
 		} catch (SQLException e) {
 			Utils.getLogger().warning(e.getMessage());
@@ -2786,7 +2880,7 @@ public class Coupon_fcm_queue {
 			dao.openPstmt(sb.toString());
 			dao.pstmt().setString(1, mb_hp);
 		
-			dao.setRs (dao.pstmt().executeQuery());
+			dao.setRs(dao.pstmt().executeQuery());
 
 			while(dao.rs().next()) 
 			{
@@ -2821,18 +2915,17 @@ public class Coupon_fcm_queue {
 		StringBuilder sb = new StringBuilder();
 		MyDataObject dao = new MyDataObject();
 		
-		sb.append("SELECT * FROM `random_coupon` WHERE `rc_no`=? limit 1");
+		sb.append("SELECT * FROM cashq.`random_coupon` WHERE rc_no=? limit 1");
 		
 		try {
 			dao.openPstmt(sb.toString());
 			dao.pstmt().setString(1, rc_no);
-		
-			dao.setRs (dao.pstmt().executeQuery());
+			dao.setRs(dao.pstmt().executeQuery());
 
-			while(dao.rs().next()) 
-			{
+
+			while(dao.rs().next()){
 				random_coupon = getResultMapRows(dao.rs());
-			}			
+			}		
 		}catch (SQLException e) {
 			Utils.getLogger().warning(e.getMessage());
 			DBConn.latest_warning = "ErrPOS039";
@@ -2846,6 +2939,47 @@ public class Coupon_fcm_queue {
 			dao.closePstmt();
 		}
 		return random_coupon;
+	}
+
+
+	/**
+	 * get_absolute_info
+	 * 랜덤쿠폰 정보를 불러온다. 
+	 * @param ac_no
+	 * @return absolute_coupon <Stirng,String>
+	 */
+	private static Map<String, String> get_absolute_info(String ac_no) {
+		// TODO Auto-generated method stub
+		Map<String, String> absolute_coupon=new HashMap<String, String>();
+
+		
+		StringBuilder sb = new StringBuilder();
+		MyDataObject dao = new MyDataObject();
+		
+		sb.append("SELECT * FROM cashq.`absolute_coupon` WHERE ac_no=? limit 1");
+		
+		try {
+			dao.openPstmt(sb.toString());
+			dao.pstmt().setString(1, ac_no);
+			dao.setRs(dao.pstmt().executeQuery());
+
+
+			while(dao.rs().next()){
+				absolute_coupon = getResultMapRows(dao.rs());
+			}		
+		}catch (SQLException e) {
+			Utils.getLogger().warning(e.getMessage());
+			DBConn.latest_warning = "ErrPOS039";
+			e.printStackTrace();
+		}catch (Exception e) {
+			Utils.getLogger().warning(e.getMessage());
+			Utils.getLogger().warning(Utils.stack(e));
+			DBConn.latest_warning = "ErrPOS040";
+		}
+		finally {
+			dao.closePstmt();
+		}
+		return absolute_coupon;
 	}
 
 	/**
